@@ -39,6 +39,7 @@ func main() {
 	fileName := strings.ToUpper(inputScanner.Text())
 
 	f, _ := os.Open(fileName)
+	defer f.Close()
 	scanner := bufio.NewScanner(f)
 
 	var names []Name
@@ -52,6 +53,6 @@ func main() {
 	}
 
 	for _, name := range names {
-		fmt.Println(name.firstName, name.lastName)
+		fmt.Printf("%s, %s\n", name.firstName, name.lastName)
 	}
 }
