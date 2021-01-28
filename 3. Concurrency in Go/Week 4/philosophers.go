@@ -2,97 +2,72 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"time"
 )
 
-const count = 5
-const maxEatCount = 3
-const maxConcurrent = 2
+/*
+Implement the dining Philosopher’s problem with the following constraints/modifications.
 
-var concurrentGroup *sync.WaitGroup
-var wg sync.WaitGroup
+There should be 5 philosophers sharing chopsticks, with one chopstick between each adjacent pair of philosophers.
+Each Philosopher should eat only 3 times (not in an infinite loop as we did in lecture)
+The philosophers pick up the chopsticks in any order, not lowest-numbered first (which we did in lecture).
+In order to eat, a Philosopher must get permission from a host which executes in its own goroutine.
+The host allows no more than 2 philosophers to eat concurrently.
+Each Philosopher is numbered, 1 through 5.
+When a Philosopher starts eating (after it has obtained necessary locks) it prints “starting to eat <number>” on a line by itself, where <number> is the number of the Philosopher.
+When a Philosopher finishes eating (before it has released its locks) it prints “finishing eating <number>” on a line by itself, where <number> is the number of the Philosopher.
+*/
 
-type Chopstick struct {
-	sync.Mutex
-}
+type ChopStick struct{ sync.Mutex }
 
 type Philosopher struct {
-	id              int
-	eatCount        int
-	leftCS, rightCS *Chopstick
+	id                            int
+	leftChopStick, rightChopStick *ChopStick
 }
 
-func (p *Philosopher) Eat() {
-	randomPhilo := rand.Float64()
-	if randomPhilo < 0.5 {
-		p.leftCS.Lock()
-		p.rightCS.Lock()
-	} else {
-		p.rightCS.Lock()
-		p.leftCS.Lock()
-	}
-
-	fmt.Printf("starting to eat %v \n", p.id)
-	p.eatCount++
-	time.Sleep(1000 * time.Millisecond)
-	fmt.Printf("finishing eating %v \n", p.id)
-	p.leftCS.Unlock()
-	p.rightCS.Unlock()
-	concurrentGroup.Done()
-	wg.Done()
-}
-
-func (p *Philosopher) EatControlPerPhilo(philoChan chan *Philosopher) {
-	for eat := 0; eat < maxEatCount; eat++ {
-		philoChan <- p
-	}
-}
-
-type Host struct {
-	concurrentExecutions int
-}
-
-func (h Host) eatControl(philoChan chan *Philosopher) {
-	for {
-		philo := <-philoChan
-		if h.concurrentExecutions == maxConcurrent {
-			concurrentGroup.Wait()
-			h.concurrentExecutions = 0
-		}
-		concurrentGroup.Add(1)
-		h.concurrentExecutions++
-		go philo.Eat()
-	}
-}
-
-func EveryoneEat(philosophers []Philosopher, philoChan chan *Philosopher) {
-	for i := 0; i < count; i++ {
-		go philosophers[i].EatControlPerPhilo(philoChan)
-	}
-}
+var eatWGroup sync.WaitGroup
 
 func main() {
-	concurrentGroup = &sync.WaitGroup{}
-	wg = sync.WaitGroup{}
-
-	host := Host{}
-	host.concurrentExecutions = 0
-
-	ChopSticks := make([]Chopstick, count)
-	for i := 0; i < count; i++ {
-		ChopSticks[i] = Chopstick{}
-	}
-	Philosophers := make([]Philosopher, count)
-	for i := 0; i < count; i++ {
-		Philosophers[i] = Philosopher{leftCS: &ChopSticks[i], rightCS: &ChopSticks[(i+1)%count], id: i + 1}
+	// Assign chop sticks.
+	chopSticks := make([]*ChopStick, 5)
+	for i := 0; i < 5; i++ {
+		chopSticks[i] = new(ChopStick)
 	}
 
-	philoChan := make(chan *Philosopher)
+	// Assign philosophers
+	philosophers := make([]*Philosopher, 5)
+	for i := 0; i < 5; i++ {
+		philosophers[i] = &Philosopher{
+			id:             i,
+			leftChopStick:  chopSticks[i],
+			rightChopStick: chopSticks[(i+1)%5],
+		}
+		eatWGroup.Add(1)
+		go philosophers[i].eat()
+	}
 
-	go host.eatControl(philoChan)
-	wg.Add(count * maxEatCount)
-	EveryoneEat(Philosophers, philoChan)
-	wg.Wait()
+	// Wait for all philosophers to eat
+	eatWGroup.Wait()
+}
+
+func (p Philosopher) eat() {
+	// Each philosopher eat 3 times
+	for j := 0; j < 3; j++ {
+		// Lock the Chop sticks, only 2 can eat at the same time because only have 5 chop sticks and each philosopher need 2.
+		// So ⌊5/2⌋ = 2
+		p.leftChopStick.Lock()
+		p.rightChopStick.Lock()
+
+		fmt.Printf("Philosopher %d is eating\n", p.id+1)
+		time.Sleep(time.Second * 3)
+
+		// Unlock
+		p.rightChopStick.Unlock()
+		p.leftChopStick.Unlock()
+
+		fmt.Printf("Philosopher %d is finished eating\n", p.id+1)
+		time.Sleep(time.Second * 3)
+	}
+	eatWGroup.Done()
 }
